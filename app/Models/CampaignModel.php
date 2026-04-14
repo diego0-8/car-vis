@@ -116,6 +116,25 @@ final class CampaignModel
         }
         $safeCol = $this->assertSqlIdentifier($fcol);
 
+        // Permite un valor único o una lista separada por "|" (ej. "a|b|c").
+        if (str_contains($fval, '|')) {
+            $parts = array_values(array_filter(array_map('trim', explode('|', $fval)), static fn (string $s) => $s !== ''));
+            if ($parts === []) {
+                return ['', []];
+            }
+            $bind = [];
+            $placeholders = [];
+            foreach ($parts as $i => $v) {
+                $k = 'acuerdos_filter_val' . $i;
+                $placeholders[] = ':' . $k;
+                $bind[$k] = $v;
+            }
+            return [
+                ' AND `' . $safeCol . '` IN (' . implode(',', $placeholders) . ')',
+                $bind,
+            ];
+        }
+
         return [
             " AND `{$safeCol}` = :acuerdos_filter_val",
             ['acuerdos_filter_val' => $fval],

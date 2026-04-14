@@ -169,29 +169,26 @@ final class GestorController extends Controller
             }
         }
 
-        // #region agent log
-        $agentLog = ROOT_PATH . '/debug-8909be.log';
-        $nowDefault = new DateTimeImmutable('now');
-        $nowBogota = new DateTimeImmutable('now', new \DateTimeZone('America/Bogota'));
-        $agentPayload = [
-            'sessionId' => '8909be',
-            'hypothesisId' => 'H1',
-            'location' => 'GestorController.php:apiStatsAcuerdosTotals',
-            'message' => 'date range vs php tz and bogota',
-            'timestamp' => (int) round(microtime(true) * 1000),
-            'data' => [
-                'php_timezone' => date_default_timezone_get(),
-                'preset' => $preset,
-                'range_from' => $from->format('Y-m-d'),
-                'range_to' => $to->format('Y-m-d'),
-                'now_default_tz_iso' => $nowDefault->format('c'),
-                'bogota_calendar_date' => $nowBogota->format('Y-m-d'),
-                'bogota_time' => $nowBogota->format('H:i:s T'),
-                'runId' => 'post-fix',
-            ],
-        ];
-        file_put_contents($agentLog, json_encode($agentPayload, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND | LOCK_EX);
-        // #endregion agent log
+        // Log de depuración opcional (desactivado por defecto).
+        if (env('APP_DEBUG_LOG', '0') === '1') {
+            $agentLog = ROOT_PATH . '/debug-gestor.log';
+            $nowDefault = new DateTimeImmutable('now');
+            $nowBogota = new DateTimeImmutable('now', new \DateTimeZone(self::REPORT_TIMEZONE));
+            $agentPayload = [
+                'location' => 'GestorController.php:apiStatsAcuerdosTotals',
+                'timestamp' => (int) round(microtime(true) * 1000),
+                'data' => [
+                    'php_timezone' => date_default_timezone_get(),
+                    'preset' => $preset,
+                    'range_from' => $from->format('Y-m-d'),
+                    'range_to' => $to->format('Y-m-d'),
+                    'now_default_tz_iso' => $nowDefault->format('c'),
+                    'bogota_calendar_date' => $nowBogota->format('Y-m-d'),
+                    'bogota_time' => $nowBogota->format('H:i:s T'),
+                ],
+            ];
+            file_put_contents($agentLog, json_encode($agentPayload, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND | LOCK_EX);
+        }
 
         $this->json([
             'ok' => true,
@@ -199,6 +196,75 @@ final class GestorController extends Controller
             'from' => $from->format('Y-m-d'),
             'to' => $to->format('Y-m-d'),
             'totals' => $totals,
+        ]);
+    }
+
+    /**
+     * Serie diaria del mes completo (1er día a último día) sumando acuerdos de todas las campañas accesibles.
+     * No depende del filtro superior: siempre retorna el mes consultado.
+     *
+     * Query: ?month=YYYY-MM (opcional; por defecto mes actual en America/Bogota)
+     *
+     * @return void
+     */
+    public function apiStatsAcuerdosMonthDaily(): void
+    {
+        $this->requireRoles(self::METRICS_ROLES);
+        $userId = (int) $_SESSION['user_id'];
+        $role = (string) ($_SESSION['role_name'] ?? '');
+
+        $month = isset($_GET['month']) ? trim((string) $_GET['month']) : '';
+        if ($month !== '' && !preg_match('/^\d{4}-\d{2}$/', $month)) {
+            $this->json(['ok' => false, 'error' => 'invalid_month'], 422);
+            return;
+        }
+
+        $tz = new \DateTimeZone(self::REPORT_TIMEZONE);
+        $base = $month !== '' ? ($month . '-01') : (new DateTimeImmutable('now', $tz))->format('Y-m-01');
+        try {
+            $from = (new DateTimeImmutable($base . ' 00:00:00', $tz))->modify('first day of this month')->setTime(0, 0, 0);
+            $to = (new DateTimeImmutable($base . ' 00:00:00', $tz))->modify('last day of this month')->setTime(23, 59, 59);
+        } catch (\Exception) {
+            $this->json(['ok' => false, 'error' => 'invalid_month'], 422);
+            return;
+        }
+
+        $userModel = new UserModel();
+        $keys = $userModel->listAllowedCampaignKeys($userId, $role);
+        $model = new CampaignModel();
+
+        /** @var array<string, int> $sumByDay */
+        $sumByDay = [];
+        foreach ($keys as $key) {
+            try {
+                $series = $model->countAcuerdosGrouped($key, $from, $to, 'day');
+                foreach ($series as $row) {
+                    $bucket = (string) ($row['bucket'] ?? '');
+                    if ($bucket === '') {
+                        continue;
+                    }
+                    $sumByDay[$bucket] = ($sumByDay[$bucket] ?? 0) + (int) ($row['total'] ?? 0);
+                }
+            } catch (Throwable) {
+                // Si falla una campaña, seguimos sumando las demás.
+                continue;
+            }
+        }
+
+        $days = [];
+        $cursor = $from;
+        while ($cursor <= $to) {
+            $k = $cursor->format('Y-m-d');
+            $days[] = ['bucket' => $k, 'total' => (int) ($sumByDay[$k] ?? 0)];
+            $cursor = $cursor->modify('+1 day');
+        }
+
+        $this->json([
+            'ok' => true,
+            'month' => $from->format('Y-m'),
+            'from' => $from->format('Y-m-d'),
+            'to' => $to->format('Y-m-d'),
+            'series' => $days,
         ]);
     }
 

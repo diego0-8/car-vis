@@ -173,6 +173,93 @@ body.gestor-page {
     margin: 0 auto;
 }
 
+.charts-section {
+    margin-top: 1.25rem;
+}
+
+.charts-grid {
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr;
+    gap: 1rem;
+    align-items: start;
+}
+
+@media (max-width: 900px) {
+    .charts-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.chart-card {
+    background: rgba(30, 41, 59, 0.65);
+    border: 1px solid rgba(71, 85, 105, 0.55);
+    border-radius: 14px;
+    padding: 1rem 1rem 0.75rem;
+    backdrop-filter: blur(8px);
+}
+
+.chart-title {
+    margin: 0 0 0.15rem;
+    font-size: 1rem;
+    font-weight: 800;
+    color: #f1f5f9;
+}
+
+.chart-sub {
+    margin: 0 0 0.75rem;
+    font-size: 0.85rem;
+    color: #94a3b8;
+}
+
+.chart-card canvas {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.pie-wrap {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+}
+
+.pie-legend {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    color: #e2e8f0;
+}
+
+.pie-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+}
+
+.pie-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    flex: 0 0 10px;
+}
+
+.pie-label {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    width: 100%;
+}
+
+.pie-label-name {
+    color: #f8fafc;
+}
+
+.pie-label-val {
+    color: #bbf7d0;
+    font-variant-numeric: tabular-nums;
+}
+
 .campaign-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -241,4 +328,57 @@ body.gestor-page {
     color: #94a3b8;
     font-size: 1rem;
     font-weight: 500;
+}
+
+/* Toast (alerta) de incrementos */
+.toast-stack {
+    position: fixed;
+    left: 50%;
+    bottom: 1.25rem;
+    transform: translateX(-50%);
+    z-index: 9999;
+    display: grid;
+    gap: 0.5rem;
+    pointer-events: none;
+}
+
+.toast {
+    pointer-events: none;
+    max-width: min(92vw, 520px);
+    padding: 0.85rem 1rem;
+    border-radius: 14px;
+    background: rgba(34, 197, 94, 0.22);
+    border: 1px solid rgba(34, 197, 94, 0.55);
+    color: #ffffff;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    animation: toast-in-up 220ms ease-out both;
+}
+
+@keyframes toast-in-up {
+    from {
+        opacity: 0;
+        transform: translateY(14px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.toast.is-hiding {
+    animation: toast-out-down 180ms ease-in both;
+}
+
+@keyframes toast-out-down {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(14px);
+    }
 }

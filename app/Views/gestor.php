@@ -3,6 +3,8 @@ declare(strict_types=1);
 /** @var string $pageTitle */
 /** @var string $username */
 /** @var string $role */
+$jsPanel = ROOT_PATH . '/public/assets/js/gestor_panel.js';
+$jsV = is_file($jsPanel) ? (string) filemtime($jsPanel) : (string) time();
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -49,6 +51,25 @@ declare(strict_types=1);
 
     <main class="gestor-main">
         <div id="campaign-grid" class="campaign-grid" aria-live="polite"></div>
+
+        <section class="charts-section" aria-label="Gráficas">
+            <div class="charts-grid">
+                <article class="chart-card">
+                    <h2 class="chart-title">Acuerdos por día (mes)</h2>
+                    <p class="chart-sub" id="chart-month-range"></p>
+                    <canvas id="chart-month-daily" width="900" height="320"></canvas>
+                </article>
+
+                <article class="chart-card">
+                    <h2 class="chart-title">Distribución por campaña</h2>
+                    <p class="chart-sub" id="chart-pie-range"></p>
+                    <div class="pie-wrap">
+                        <canvas id="chart-pie" width="520" height="320"></canvas>
+                        <div id="chart-pie-legend" class="pie-legend" aria-label="Leyenda"></div>
+                    </div>
+                </article>
+            </div>
+        </section>
     </main>
 
     <script>
@@ -56,6 +77,6 @@ declare(strict_types=1);
         window.__VISUAL_NOTIFICATION_MP3__ = <?= json_encode(asset_url('assets/sounds/notificacion.mp3'), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     </script>
     <!-- Auto-actualización de totales cada 30 s: ver gestor_panel.js (actualizarDashboard + setInterval) -->
-    <script src="<?= htmlspecialchars(asset_url('assets/js/gestor_panel.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+    <script src="<?= htmlspecialchars(asset_url('assets/js/gestor_panel.js?v=' . rawurlencode($jsV)), ENT_QUOTES, 'UTF-8') ?>"></script>
 </body>
 </html>

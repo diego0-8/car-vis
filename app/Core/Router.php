@@ -25,6 +25,7 @@ final class Router
             $route === 'api/campaigns' && $method === 'GET' => (new GestorController())->apiCampaigns(),
             $route === 'api/stats/acuerdos' && $method === 'GET' => (new GestorController())->apiStatsAcuerdos(),
             $route === 'api/stats/acuerdos-totals' && $method === 'GET' => (new GestorController())->apiStatsAcuerdosTotals(),
+            $route === 'api/stats/acuerdos-month-daily' && $method === 'GET' => (new GestorController())->apiStatsAcuerdosMonthDaily(),
             $route === 'api/admin/users' && $method === 'GET' => (new AdminController())->apiListUsers(),
             $route === 'api/admin/users' && $method === 'POST' => (new AdminController())->apiCreateUser(),
             $route === 'api/admin/user' && $method === 'PATCH' => (new AdminController())->apiPatchUser(),

@@ -3,6 +3,8 @@ declare(strict_types=1);
 /** @var string $pageTitle */
 /** @var string $username */
 /** @var string $role */
+$jsAdmin = ROOT_PATH . '/public/assets/js/admin_dashboard.js';
+$jsV = is_file($jsAdmin) ? (string) filemtime($jsAdmin) : (string) time();
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -89,6 +91,6 @@ declare(strict_types=1);
     <script>
         window.__VISUAL_INDEX__ = <?= json_encode(index_script_url(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
     </script>
-    <script src="<?= htmlspecialchars(asset_url('assets/js/admin_dashboard.js'), ENT_QUOTES, 'UTF-8') ?>"></script>
+    <script src="<?= htmlspecialchars(asset_url('assets/js/admin_dashboard.js?v=' . rawurlencode($jsV)), ENT_QUOTES, 'UTF-8') ?>"></script>
 </body>
 </html>
