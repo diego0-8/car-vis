@@ -1,0 +1,3 @@
+-- OBSOLETO respecto al esquema actual: ya no existe la tabla `roles`.
+-- El rol `gestor` está definido en el ENUM de `users.role` (ver schema_master.sql).
+-- Si tu base aún usa la versión antigua (tabla roles + role_id), migra a mano o importa de nuevo schema_master.sql tras respaldo.
