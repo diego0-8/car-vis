@@ -4,6 +4,7 @@
     const grid = document.getElementById('campaign-grid');
     const elMonthDaily = document.getElementById('chart-month-daily');
     const elMonthRange = document.getElementById('chart-month-range');
+    const elMonthScroll = document.getElementById('chart-month-scroll');
     const elPie = document.getElementById('chart-pie');
     const elPieLegend = document.getElementById('chart-pie-legend');
     const elPieRange = document.getElementById('chart-pie-range');
@@ -28,6 +29,16 @@
 
     /** @type {{monthKey:string, series:Array<{bucket:string,total:number}>, fetchedAt:number}|null} */
     let monthCache = null;
+    /** @type {Array<{bucket:string,total:number}>|null} */
+    let lastMonthSeries = null;
+    /** @type {Array<{key?:string,label?:string,total?:number}>|null} */
+    let lastPieRows = null;
+    /** @type {{slices:Array<{a0:number,a1:number,label:string,total:number,color:string}>, cx:number, cy:number, rOuter:number, rInner:number, dpr:number}|null} */
+    let lastPieGeom = null;
+    /** @type {{padL:number,padR:number,padT:number,padB:number,plotW:number,plotH:number,w:number,h:number,dpr:number}|null} */
+    let lastMonthGeom = null;
+
+    let tooltipEl = null;
 
     // #region agent log
     fetch('http://127.0.0.1:7530/ingest/db0844c5-301c-4cc2-9637-08cd6208544e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6ae59a'},body:JSON.stringify({sessionId:'6ae59a',runId:'pre-fix',hypothesisId:'H_CACHE',location:'gestor_panel.js:init',message:'script loaded',data:{indexUrl:!!indexUrl,href:String(window.location&&window.location.href||''),userAgent:String(navigator&&navigator.userAgent||''),ts:Date.now()},timestamp:Date.now()})}).catch(()=>{});
@@ -173,11 +184,53 @@
         return colors[i % colors.length];
     }
 
+    function getOrCreateTooltip() {
+        if (tooltipEl) return tooltipEl;
+        const el = document.createElement('div');
+        el.className = 'chart-tooltip';
+        el.hidden = true;
+        document.body.appendChild(el);
+        tooltipEl = el;
+        return el;
+    }
+
+    function showTooltip(x, y, html) {
+        const el = getOrCreateTooltip();
+        if (!html) {
+            hideTooltip();
+            return;
+        }
+        el.innerHTML = html;
+        el.hidden = false;
+        const pad = 14;
+        const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+        const vh = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+        // posicionar sin salirse
+        el.style.left = Math.min(vw - pad, Math.max(pad, x + 12)) + 'px';
+        el.style.top = Math.min(vh - pad, Math.max(pad, y + 12)) + 'px';
+        el.classList.add('is-show');
+    }
+
+    function hideTooltip() {
+        const el = getOrCreateTooltip();
+        el.classList.remove('is-show');
+        el.hidden = true;
+    }
+
     function clearCanvas(c) {
         if (!c) return;
         const ctx = c.getContext('2d');
         if (!ctx) return;
         ctx.clearRect(0, 0, c.width, c.height);
+    }
+
+    function setCanvasSize(canvas, cssW, cssH) {
+        const dpr = Math.max(1, Math.round(window.devicePixelRatio || 1));
+        canvas.style.width = cssW + 'px';
+        canvas.style.height = cssH + 'px';
+        canvas.width = Math.max(1, Math.floor(cssW * dpr));
+        canvas.height = Math.max(1, Math.floor(cssH * dpr));
+        return dpr;
     }
 
     function drawPieChart(canvas, rows) {
@@ -199,9 +252,14 @@
             return;
         }
 
-        const cx = Math.round(w * 0.38);
-        const cy = Math.round(h * 0.5);
-        const r = Math.round(Math.min(w * 0.34, h * 0.42));
+        const dpr = Math.max(1, Math.round(window.devicePixelRatio || 1));
+        const cx = Math.round(w * 0.5);
+        const cy = Math.round(h * 0.48);
+        const r = Math.round(Math.min(w * 0.42, h * 0.42));
+        const rInner = Math.round(r * 0.58);
+
+        /** @type {Array<{a0:number,a1:number,label:string,total:number,color:string}>} */
+        const slices = [];
 
         let a0 = -Math.PI / 2;
         for (let i = 0; i < rows.length; i++) {
@@ -213,14 +271,22 @@
             ctx.moveTo(cx, cy);
             ctx.arc(cx, cy, r, a0, a1);
             ctx.closePath();
-            ctx.fillStyle = palette(i);
+            const col = palette(i);
+            ctx.fillStyle = col;
             ctx.fill();
+            slices.push({
+                a0: a0,
+                a1: a1,
+                label: String(rows[i].label || rows[i].key || '—'),
+                total: v,
+                color: col,
+            });
             a0 = a1;
         }
 
         // hueco central para look moderno
         ctx.beginPath();
-        ctx.arc(cx, cy, Math.round(r * 0.58), 0, Math.PI * 2);
+        ctx.arc(cx, cy, rInner, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(11,18,32,0.9)';
         ctx.fill();
 
@@ -232,6 +298,8 @@
         ctx.fillStyle = '#94a3b8';
         ctx.fillText('total', cx, cy + 24);
         ctx.textAlign = 'start';
+
+        lastPieGeom = { slices: slices, cx: cx, cy: cy, rOuter: r, rInner: rInner, dpr: dpr };
     }
 
     function renderPieLegend(rows) {
@@ -360,6 +428,140 @@
             ctx.fillText(d, x, padT + plotH + 22);
         }
         ctx.textAlign = 'start';
+
+        lastMonthGeom = {
+            padL: padL,
+            padR: padR,
+            padT: padT,
+            padB: padB,
+            plotW: plotW,
+            plotH: plotH,
+            w: w,
+            h: h,
+            dpr: Math.max(1, Math.round(window.devicePixelRatio || 1)),
+        };
+    }
+
+    function resizeAndDrawMonth(series) {
+        if (!elMonthDaily) return;
+        const cssH = 320;
+        const days = series && series.length ? series.length : 31;
+        const cssW = Math.max(920, 46 + 16 + days * 32);
+        setCanvasSize(elMonthDaily, cssW, cssH);
+        drawLineChartMonth(elMonthDaily, series || []);
+
+        // #region agent log
+        try {
+            const vpW = window.innerWidth || 0;
+            const sect = document.querySelector('.charts-section--full');
+            const shell = document.querySelector('.charts-shell');
+            const gridEl = document.querySelector('.charts-grid');
+            const card = elMonthDaily.closest('.chart-card');
+            const scr = document.getElementById('chart-month-scroll');
+            fetch('http://127.0.0.1:7530/ingest/db0844c5-301c-4cc2-9637-08cd6208544e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6ae59a'},body:JSON.stringify({sessionId:'6ae59a',runId:'layout',hypothesisId:'H_OVERFLOW',location:'gestor_panel.js:resizeAndDrawMonth',message:'month sizes',data:{vpW:vpW,sectionW:sect&&sect.getBoundingClientRect?Math.round(sect.getBoundingClientRect().width):null,shellW:shell&&shell.getBoundingClientRect?Math.round(shell.getBoundingClientRect().width):null,gridW:gridEl&&gridEl.getBoundingClientRect?Math.round(gridEl.getBoundingClientRect().width):null,cardW:card&&card.getBoundingClientRect?Math.round(card.getBoundingClientRect().width):null,scrollClientW:scr?Math.round(scr.clientWidth):null,scrollScrollW:scr?Math.round(scr.scrollWidth):null,canvasCssW:elMonthDaily.style.width||'',canvasPxW:elMonthDaily.width},timestamp:Date.now()})}).catch(()=>{});
+        } catch (e) {}
+        // #endregion agent log
+    }
+
+    function resizeAndDrawPie(rows) {
+        if (!elPie) return;
+        const parent = elPie.parentElement;
+        const wrapW = parent ? parent.clientWidth : 520;
+        const cssW = Math.max(260, Math.min(700, wrapW || 520));
+        const cssH = 320;
+        setCanvasSize(elPie, cssW, cssH);
+        drawPieChart(elPie, rows || []);
+
+        // #region agent log
+        try {
+            const vpW = window.innerWidth || 0;
+            const gridEl = document.querySelector('.charts-grid');
+            const card = elPie.closest('.chart-card');
+            fetch('http://127.0.0.1:7530/ingest/db0844c5-301c-4cc2-9637-08cd6208544e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6ae59a'},body:JSON.stringify({sessionId:'6ae59a',runId:'layout',hypothesisId:'H_OVERFLOW',location:'gestor_panel.js:resizeAndDrawPie',message:'pie sizes',data:{vpW:vpW,gridW:gridEl&&gridEl.getBoundingClientRect?Math.round(gridEl.getBoundingClientRect().width):null,cardW:card&&card.getBoundingClientRect?Math.round(card.getBoundingClientRect().width):null,parentW:parent?Math.round(parent.clientWidth):null,canvasCssW:elPie.style.width||'',canvasPxW:elPie.width},timestamp:Date.now()})}).catch(()=>{});
+        } catch (e) {}
+        // #endregion agent log
+    }
+
+    function attachTooltipHandlersOnce() {
+        if (elMonthDaily && !elMonthDaily.__tipBound) {
+            elMonthDaily.__tipBound = true;
+            elMonthDaily.addEventListener('mouseleave', hideTooltip);
+            elMonthDaily.addEventListener('mousemove', function (ev) {
+                if (!lastMonthSeries || !lastMonthGeom) return;
+                const r = elMonthDaily.getBoundingClientRect();
+                const xCss = ev.clientX - r.left;
+                const yCss = ev.clientY - r.top;
+                // convertir a coords canvas (px internos)
+                const x = (xCss * elMonthDaily.width) / Math.max(1, r.width);
+                const y = (yCss * elMonthDaily.height) / Math.max(1, r.height);
+
+                const g = lastMonthGeom;
+                if (x < g.padL || x > g.w - g.padR || y < g.padT || y > g.h - g.padB) {
+                    hideTooltip();
+                    return;
+                }
+                const rel = (x - g.padL) / Math.max(1, g.plotW);
+                const idx = Math.max(0, Math.min(lastMonthSeries.length - 1, Math.round(rel * (lastMonthSeries.length - 1))));
+                const p = lastMonthSeries[idx];
+                if (!p) {
+                    hideTooltip();
+                    return;
+                }
+                showTooltip(
+                    ev.clientX,
+                    ev.clientY,
+                    '<div class="muted">' +
+                        String(p.bucket || '') +
+                        '</div><div><b>' +
+                        String(p.total != null ? p.total : 0) +
+                        '</b> acuerdos</div>'
+                );
+            });
+        }
+
+        if (elPie && !elPie.__tipBound) {
+            elPie.__tipBound = true;
+            elPie.addEventListener('mouseleave', hideTooltip);
+            elPie.addEventListener('mousemove', function (ev) {
+                if (!lastPieGeom) return;
+                const r = elPie.getBoundingClientRect();
+                const xCss = ev.clientX - r.left;
+                const yCss = ev.clientY - r.top;
+                const x = (xCss * elPie.width) / Math.max(1, r.width);
+                const y = (yCss * elPie.height) / Math.max(1, r.height);
+
+                const g = lastPieGeom;
+                const dx = x - g.cx;
+                const dy = y - g.cy;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < g.rInner || dist > g.rOuter) {
+                    hideTooltip();
+                    return;
+                }
+                let ang = Math.atan2(dy, dx); // -PI..PI
+                // normalizar a [0, 2PI) con base -PI/2 usada en el dibujo
+                if (ang < -Math.PI / 2) {
+                    ang += Math.PI * 2;
+                }
+                // buscar slice
+                for (let i = 0; i < g.slices.length; i++) {
+                    const s = g.slices[i];
+                    if (ang >= s.a0 && ang < s.a1) {
+                        showTooltip(
+                            ev.clientX,
+                            ev.clientY,
+                            '<div class="muted">Distribución</div><div><b>' +
+                                s.label +
+                                '</b></div><div>' +
+                                String(s.total) +
+                                ' acuerdos</div>'
+                        );
+                        return;
+                    }
+                }
+                hideTooltip();
+            });
+        }
     }
 
     async function loadMonthDaily() {
@@ -393,10 +595,12 @@
             return;
         }
         monthCache = { monthKey: mk, series: data.series || [], fetchedAt: now };
+        lastMonthSeries = monthCache.series;
         if (elMonthRange) {
             elMonthRange.textContent = 'Mes: ' + (data.from || '') + ' — ' + (data.to || '');
         }
-        drawLineChartMonth(elMonthDaily, monthCache.series);
+        resizeAndDrawMonth(monthCache.series);
+        attachTooltipHandlersOnce();
     }
 
     function setActiveTab(preset) {
@@ -645,8 +849,10 @@
                 const okRows = (data.totals || []).filter(function (r) {
                     return r && !r.error;
                 });
-                drawPieChart(elPie, okRows);
+                lastPieRows = okRows;
+                resizeAndDrawPie(okRows);
                 renderPieLegend(okRows);
+                attachTooltipHandlersOnce();
             }
 
             const firmaPeriodo =
@@ -737,4 +943,15 @@
     setActiveTab('today');
     actualizarDashboard();
     setInterval(actualizarDashboard, 30000);
+
+    if (typeof window.addEventListener === 'function') {
+        window.addEventListener('resize', function () {
+            if (lastMonthSeries) {
+                resizeAndDrawMonth(lastMonthSeries);
+            }
+            if (lastPieRows) {
+                resizeAndDrawPie(lastPieRows);
+            }
+        });
+    }
 })();

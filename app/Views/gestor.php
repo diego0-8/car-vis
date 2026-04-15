@@ -51,13 +51,17 @@ $jsV = is_file($jsPanel) ? (string) filemtime($jsPanel) : (string) time();
 
     <main class="gestor-main">
         <div id="campaign-grid" class="campaign-grid" aria-live="polite"></div>
+    </main>
 
-        <section class="charts-section" aria-label="Gráficas">
+    <section class="charts-section charts-section--full" aria-label="Gráficas">
+        <div class="charts-shell">
             <div class="charts-grid">
                 <article class="chart-card">
                     <h2 class="chart-title">Acuerdos por día (mes)</h2>
                     <p class="chart-sub" id="chart-month-range"></p>
-                    <canvas id="chart-month-daily" width="900" height="320"></canvas>
+                    <div id="chart-month-scroll" class="chart-scroll" aria-label="Scroll gráfico mensual">
+                        <canvas id="chart-month-daily" width="900" height="320"></canvas>
+                    </div>
                 </article>
 
                 <article class="chart-card">
@@ -69,8 +73,8 @@ $jsV = is_file($jsPanel) ? (string) filemtime($jsPanel) : (string) time();
                     </div>
                 </article>
             </div>
-        </section>
-    </main>
+        </div>
+    </section>
 
     <script>
         window.__VISUAL_INDEX__ = <?= json_encode(index_script_url(), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
