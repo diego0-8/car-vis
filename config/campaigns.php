@@ -8,6 +8,8 @@ declare(strict_types=1);
  * Opcional:
  * - acuerdos_filter_column + acuerdos_filter_value: filtro extra (ej. solo tipo_gestion = acuerdo_pago).
  *   La fecha del rango sigue siendo acuerdos_date_column (ej. fecha_gestion).
+ * - acuerdos_filter_value_is_list: si true, interpreta acuerdos_filter_value con "|" como lista (IN).
+ *   Si false, trata el valor como literal (igualdad exacta), aunque contenga "|".
  */
 return [
     'Emermedica Cobranza' => [
@@ -17,6 +19,7 @@ return [
         'acuerdos_date_column' => 'fecha_gestion',
         'acuerdos_filter_column' => 'tipo_gestion',
         'acuerdos_filter_value' => 'contacto_exitoso|acuerdo_pago',
+        'acuerdos_filter_value_is_list' => false,
     ],
     'Banco W' => [
         'label' => 'Banco W',

@@ -116,8 +116,16 @@ final class CampaignModel
         }
         $safeCol = $this->assertSqlIdentifier($fcol);
 
+        $valueIsList = $entry['acuerdos_filter_value_is_list'] ?? null;
+        $treatAsList =
+            is_bool($valueIsList) ? $valueIsList : (is_string($valueIsList) ? $valueIsList === '1' : null);
+        if ($treatAsList === null) {
+            // Default: si contiene "|", interpretamos como lista "a|b|c".
+            $treatAsList = str_contains($fval, '|');
+        }
+
         // Permite un valor único o una lista separada por "|" (ej. "a|b|c").
-        if (str_contains($fval, '|')) {
+        if ($treatAsList) {
             $parts = array_values(array_filter(array_map('trim', explode('|', $fval)), static fn (string $s) => $s !== ''));
             if ($parts === []) {
                 return ['', []];
