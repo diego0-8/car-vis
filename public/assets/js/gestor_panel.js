@@ -29,9 +29,18 @@
 
     /** @type {{monthKey:string, series:Array<{bucket:string,total:number}>, fetchedAt:number}|null} */
     let monthCache = null;
+    /** @type {Array<{bucket:string,total:number}>|null} */
+    let lastMonthSeries = null;
+    /** @type {Array<{key?:string,label?:string,total?:number}>|null} */
+    let lastPieRows = null;
+    /** @type {{slices:Array<{a0:number,a1:number,label:string,total:number,color:string}>, cx:number, cy:number, rOuter:number, rInner:number, dpr:number}|null} */
+    let lastPieGeom = null;
+    /** @type {{padL:number,padR:number,padT:number,padB:number,plotW:number,plotH:number,w:number,h:number,dpr:number}|null} */
+    let lastMonthGeom = null;
+    let tooltipEl = null;
 
     // #region agent log
-    fetch('http://127.0.0.1:7530/ingest/db0844c5-301c-4cc2-9637-08cd6208544e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'6ae59a'},body:JSON.stringify({sessionId:'6ae59a',runId:'pre-fix',hypothesisId:'H_CACHE',location:'gestor_panel.js:init',message:'script loaded',data:{indexUrl:!!indexUrl,href:String(window.location&&window.location.href||''),userAgent:String(navigator&&navigator.userAgent||''),ts:Date.now()},timestamp:Date.now()})}).catch(()=>{});
+    fetch('http://127.0.0.1:7890/ingest/ab547191-b984-468f-94d8-cb175f3e9192',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5f8578'},body:JSON.stringify({sessionId:'5f8578',runId:'pre-fix',hypothesisId:'H1',location:'gestor_panel.js:init',message:'boot symbols',data:{buildId:'dbg-2026-04-20a',indexUrl:!!indexUrl,hasMonthScroll:!!elMonthScroll,typeof_resizeAndDrawPie:typeof resizeAndDrawPie,typeof_resizeAndDrawMonth:typeof resizeAndDrawMonth,typeof_attachTooltipHandlersOnce:typeof attachTooltipHandlersOnce,typeof_lastMonthSeries:typeof lastMonthSeries,typeof_lastPieRows:typeof lastPieRows,typeof_lastPieGeom:typeof lastPieGeom},timestamp:Date.now()})}).catch(()=>{});
     // #endregion agent log
 
     const DEBUG_AGENT = false;
@@ -172,6 +181,47 @@
             '#c084fc',
         ];
         return colors[i % colors.length];
+    }
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function getOrCreateTooltip() {
+        if (tooltipEl) return tooltipEl;
+        const el = document.createElement('div');
+        el.className = 'chart-tooltip';
+        el.hidden = true;
+        document.body.appendChild(el);
+        tooltipEl = el;
+        return el;
+    }
+
+    function showTooltip(x, y, html) {
+        const el = getOrCreateTooltip();
+        if (!html) {
+            hideTooltip();
+            return;
+        }
+        el.innerHTML = html;
+        el.hidden = false;
+        const pad = 14;
+        const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+        const vh = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+        el.style.left = Math.min(vw - pad, Math.max(pad, x + 12)) + 'px';
+        el.style.top = Math.min(vh - pad, Math.max(pad, y + 12)) + 'px';
+        el.classList.add('is-show');
+    }
+
+    function hideTooltip() {
+        const el = getOrCreateTooltip();
+        el.classList.remove('is-show');
+        el.hidden = true;
     }
 
     function clearCanvas(c) {
@@ -385,6 +435,119 @@
             ctx.fillText(d, x, padT + plotH + 22);
         }
         ctx.textAlign = 'start';
+
+        lastMonthGeom = {
+            padL: padL,
+            padR: padR,
+            padT: padT,
+            padB: padB,
+            plotW: plotW,
+            plotH: plotH,
+            w: w,
+            h: h,
+            dpr: Math.max(1, Math.round(window.devicePixelRatio || 1)),
+        };
+    }
+
+    function resizeAndDrawMonth(series) {
+        if (!elMonthDaily) return;
+        const cssH = 320;
+        const days = series && series.length ? series.length : 31;
+        const cssW = Math.max(920, 46 + 16 + days * 32);
+        setCanvasSize(elMonthDaily, cssW, cssH);
+        drawLineChartMonth(elMonthDaily, series || []);
+    }
+
+    function resizeAndDrawPie(rows) {
+        if (!elPie) return;
+        const parent = elPie.parentElement;
+        const wrapW = parent ? parent.clientWidth : 520;
+        const cssW = Math.max(260, Math.min(700, wrapW || 520));
+        const cssH = 320;
+        setCanvasSize(elPie, cssW, cssH);
+        drawPieChart(elPie, rows || []);
+    }
+
+    function attachTooltipHandlersOnce() {
+        if (elMonthDaily && !elMonthDaily.__tipBound) {
+            elMonthDaily.__tipBound = true;
+            elMonthDaily.addEventListener('mouseleave', hideTooltip);
+            elMonthDaily.addEventListener('mousemove', function (ev) {
+                if (!lastMonthSeries || !lastMonthGeom) return;
+                const r = elMonthDaily.getBoundingClientRect();
+                const xCss = ev.clientX - r.left;
+                const yCss = ev.clientY - r.top;
+                const x = (xCss * elMonthDaily.width) / Math.max(1, r.width);
+                const y = (yCss * elMonthDaily.height) / Math.max(1, r.height);
+
+                const g = lastMonthGeom;
+                if (x < g.padL || x > g.w - g.padR || y < g.padT || y > g.h - g.padB) {
+                    hideTooltip();
+                    return;
+                }
+                const rel = (x - g.padL) / Math.max(1, g.plotW);
+                const idx = Math.max(
+                    0,
+                    Math.min(lastMonthSeries.length - 1, Math.round(rel * (lastMonthSeries.length - 1)))
+                );
+                const p = lastMonthSeries[idx];
+                if (!p) {
+                    hideTooltip();
+                    return;
+                }
+                showTooltip(
+                    ev.clientX,
+                    ev.clientY,
+                    '<div class="muted">' +
+                        escapeHtml(p.bucket || '') +
+                        '</div><div><b>' +
+                        escapeHtml(p.total != null ? p.total : 0) +
+                        '</b> acuerdos</div>'
+                );
+            });
+        }
+
+        if (elPie && !elPie.__tipBound) {
+            elPie.__tipBound = true;
+            elPie.addEventListener('mouseleave', hideTooltip);
+            elPie.addEventListener('mousemove', function (ev) {
+                if (!lastPieGeom) return;
+                const r = elPie.getBoundingClientRect();
+                const xCss = ev.clientX - r.left;
+                const yCss = ev.clientY - r.top;
+                const x = (xCss * elPie.width) / Math.max(1, r.width);
+                const y = (yCss * elPie.height) / Math.max(1, r.height);
+
+                const g = lastPieGeom;
+                const dx = x - g.cx;
+                const dy = y - g.cy;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < g.rInner || dist > g.rOuter) {
+                    hideTooltip();
+                    return;
+                }
+                let ang = Math.atan2(dy, dx);
+                if (ang < -Math.PI / 2) {
+                    ang += Math.PI * 2;
+                }
+                for (let i = 0; i < g.slices.length; i++) {
+                    const s = g.slices[i];
+                    if (ang >= s.a0 && ang < s.a1) {
+                        showTooltip(
+                            ev.clientX,
+                            ev.clientY,
+                            '<div class="muted">Distribución</div><div><b>' +
+                                escapeHtml(s.label) +
+                                '</b></div><div>' +
+                                escapeHtml(s.total) +
+                                ' acuerdos</div>'
+                        );
+                        return;
+                    }
+                }
+                hideTooltip();
+            });
+        }
     }
 
     async function loadMonthDaily() {
@@ -675,6 +838,11 @@
                     return r && !r.error;
                 });
                 lastPieRows = okRows;
+
+                // #region agent log
+                fetch('http://127.0.0.1:7890/ingest/ab547191-b984-468f-94d8-cb175f3e9192',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5f8578'},body:JSON.stringify({sessionId:'5f8578',runId:'pre-fix',hypothesisId:'H2',location:'gestor_panel.js:loadTotals',message:'before draw pie',data:{okRowsLen:Array.isArray(okRows)?okRows.length:null,typeof_resizeAndDrawPie:typeof resizeAndDrawPie,typeof_lastPieRows:typeof lastPieRows},timestamp:Date.now()})}).catch(()=>{});
+                // #endregion agent log
+
                 resizeAndDrawPie(okRows);
                 renderPieLegend(okRows);
                 attachTooltipHandlersOnce();
@@ -771,6 +939,9 @@
 
     if (typeof window.addEventListener === 'function') {
         window.addEventListener('resize', function () {
+            // #region agent log
+            fetch('http://127.0.0.1:7890/ingest/ab547191-b984-468f-94d8-cb175f3e9192',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5f8578'},body:JSON.stringify({sessionId:'5f8578',runId:'pre-fix',hypothesisId:'H3',location:'gestor_panel.js:resize',message:'on resize',data:{typeof_lastMonthSeries:typeof lastMonthSeries,typeof_lastPieRows:typeof lastPieRows,typeof_resizeAndDrawMonth:typeof resizeAndDrawMonth,typeof_resizeAndDrawPie:typeof resizeAndDrawPie},timestamp:Date.now()})}).catch(()=>{});
+            // #endregion agent log
             if (lastMonthSeries) {
                 resizeAndDrawMonth(lastMonthSeries);
             }
